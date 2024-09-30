@@ -1,13 +1,29 @@
 'use client';
-import Button from '@mui/material/Button';
+
+import * as React from 'react';
+import { AppBar, Toolbar } from '@mui/material';
+import { ThemeProvider } from '@emotion/react';
+import theme from './theme';
 
 export default function Home() {
   return (
     <>
-      <button>버튼</button>
-      <Button className="tw-bg-red-500" variant="contained">
-        Contained
-      </Button>
+      {/* <AppBar position="static"> */}
+      <AppBar position="fixed">
+        <Toolbar>
+          <div className="tw-flex-1">
+          </div>
+          <div className="logo-box">
+            <a href="/" className="tw-font-bold">
+              로고
+            </a>
+          </div>
+          <div className="tw-flex-1 tw-flex tw-justify-end">글쓰기</div>
+        </Toolbar>
+      </AppBar>
+      <section className="tw-h-screen tw-flex tw-items-center tw-justify-center tw-text-[2rem]">
+        section
+      </section>
     </>
   );
 }
