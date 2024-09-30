@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { AppBar, Toolbar } from '@mui/material';
 import { ThemeProvider } from '@emotion/react';
+import { FaBars } from 'react-icons/fa';
 import theme from './theme';
 
 export default function Home() {
@@ -12,6 +13,7 @@ export default function Home() {
       <AppBar position="fixed">
         <Toolbar>
           <div className="tw-flex-1">
+            <FaBars />
           </div>
           <div className="logo-box">
             <a href="/" className="tw-font-bold">
