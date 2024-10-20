@@ -10,44 +10,105 @@ import {
   CssBaseline,
   Chip,
   Drawer,
+  SwipeableDrawer,
+  List,
+  ListItem,
+  Divider,
+  ListItemButton,
+  Modal,
+  Snackbar,
+  Alert,
   Box,
 } from '@mui/material';
 import { ThemeProvider } from '@emotion/react';
 import classNames from 'classnames';
-import { FaBars, FaCheck, FaEllipsisV } from 'react-icons/fa';
+import { RecoilRoot, atom, selector, useRecoilState, useRecoilValue } from 'recoil';
+import { FaBars, FaCheck, FaEllipsisH, FaTrash, FaEllipsisV } from 'react-icons/fa';
+import { FaPenToSquare } from 'react-icons/fa6';
 import dateToStr from './dateUtil';
 import RootTheme from './theme';
 
-function useTodoStatus() {
-  const [todos, setTodos] = React.useState([]);
-  const lastTodoIdRef = React.useRef(0);
+const todosAtom = atom({
+  key: 'app/todosAtom',
+  default: [],
+});
+
+const lastTodoIdAtom = atom({
+  key: 'app/lastTodoIdAtom',
+  default: 0,
+});
+
+function useTodosStatus() {
+  const [todos, setTodos] = useRecoilState(todosAtom); // 리코일 사용
+  // const [todos, setTodos] = React.useState([]);
+
+  const [lastTodoId, setLastTodoId] = useRecoilState(lastTodoIdAtom);
+  const lastTodoIdRef = React.useRef(lastTodoId);
+
+  lastTodoIdRef.current = lastTodoId;
 
   const addTodo = (newContent) => {
     const id = ++lastTodoIdRef.current;
+    setLastTodoId(id);
     const newTodo = {
       id,
       content: newContent,
       regDate: dateToStr(new Date()),
     };
     setTodos((todos) => [newTodo, ...todos]);
+
+    return id;
   };
   const removeTodo = (id) => {
     const newTodos = todos.filter((todo) => todo.id != id);
     setTodos(newTodos);
   };
+
+  // modify v1
   const modifyTodo = (id, content) => {
     const newTodos = todos.map((todo) => (todo.id != id ? todo : { ...todo, content }));
     setTodos(newTodos);
   };
+
+  // modify v2
+  const modifyTodoByIndex = (index, newContent) => {
+    const newTodos = todos.map((todo, _index) =>
+      _index != index ? todo : { ...todo, content: newContent },
+    );
+    setTodos(newTodos);
+  };
+  // modify v2
+  const modifyTodoById = (id, newContent) => {
+    const index = findTodoIndexById(id);
+    if (index == -1) {
+      return null;
+    }
+    modifyTodoByIndex(index, newContent);
+  };
+
+  const findTodoIndexById = (id) => {
+    return todos.findIndex((todo) => todo.id == id);
+  };
+  const findTodoById = (id) => {
+    const index = findTodoIndexById(id);
+    if (index == -1) {
+      return null;
+    }
+    return todos[index];
+  };
+
   return {
     todos,
     addTodo,
     removeTodo,
     modifyTodo,
+    findTodoById,
+    modifyTodoById,
   };
 }
 
-const NewTodoForm = ({ todosState }) => {
+const NewTodoForm = ({ noticeSnackbarStatus }) => {
+  const todosStatus = useTodosStatus();
   const onSubmit = (e) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -57,9 +118,10 @@ const NewTodoForm = ({ todosState }) => {
       form.content.focus();
       return;
     }
-    todosState.addTodo(form.content.value);
+    const newTodoId = todosStatus.addTodo(form.content.value);
     form.content.value = '';
     form.content.focus();
+    noticeSnackbarStatus.open(`${newTodoId}번 todo 추가됨`);
   };
 
   return (
@@ -141,30 +203,147 @@ function useTodoOptionDrawerStatus() {
   };
 }
 
-const TodoList = ({ todosState }) => {
+// modal 열기, 닫기
+function useEditTodoModalStatus() {
+  const [opened, setOpened] = React.useState(false);
+
+  const open = () => {
+    setOpened(true);
+  };
+
+  const close = () => {
+    setOpened(false);
+  };
+
+  return {
+    opened,
+    open,
+    close,
+  };
+}
+
+function EditTodoModal({ status, todo, noticeSnackbarStatus }) {
+  const todosStatus = useTodosStatus();
+  const onSubmit = (e) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    form.content.value = form.content.value.trim();
+    if (form.content.value.length == 0) {
+      alert('할 일 써');
+      form.content.focus();
+      return;
+    }
+    // modify v1
+    todosStatus.modifyTodo(todo.id, form.content.value);
+    status.close();
+
+    noticeSnackbarStatus.open(`${todo.id}번 todo 수정됨`);
+
+    // modify v2
+    // todosStatus.modifyTodoById(todo.id, form.content.value);
+  };
+  return (
+    <>
+      <Modal
+        open={status.opened}
+        onClose={status.close}
+        className="tw-flex tw-justify-center tw-items-center">
+        <div className="tw-bg-white tw-p-10 tw-rounded-[20px] tw-w-full tw-max-w-lg">
+          <form onSubmit={onSubmit} className="tw-flex tw-flex-col tw-gap-2">
+            <TextField
+              minRows={3}
+              maxRows={10}
+              multiline
+              name="content"
+              autoComplete="off"
+              variant="outlined"
+              label="할 일 써"
+              defaultValue={todo?.content}
+            />
+            <Button variant="contained" className="tw-font-bold" type="submit">
+              수정
+            </Button>
+          </form>
+        </div>
+      </Modal>
+    </>
+  );
+}
+
+function TodoOptionDrawer({ status, noticeSnackbarStatus }) {
+  const todosStatus = useTodosStatus();
+  const removeTodo = () => {
+    if (confirm(`${status.todoId}번 할 일을 삭제하시겠습니까?`) == false) {
+      status.close();
+      return;
+    }
+    todosStatus.removeTodo(status.todoId);
+    status.close();
+    noticeSnackbarStatus.open(`${status.todoId}번 todo 삭제됨`, 'error');
+  };
+
+  const editTodoModalStatus = useEditTodoModalStatus();
+
+  const todo = todosStatus.findTodoById(status.todoId);
+
+  return (
+    <>
+      <EditTodoModal
+        status={editTodoModalStatus}
+        todosStatus={todosStatus}
+        todo={todo}
+        noticeSnackbarStatus={noticeSnackbarStatus}
+      />
+      <SwipeableDrawer anchor="top" open={status.opened} onClose={status.close} onOpen={() => {}}>
+        <List>
+          <ListItem className="tw-flex tw-gap-2 tw-p-[15px]">
+            <span className="tw-text-[--mui-color-primary-main]">{todo?.id}번</span>{' '}
+            {/*옵셔널 체이닝*/}
+            <span className="tw-text-[--mui-color-primary-main]">{status.todoId}번 </span>
+            <span>Your Todo</span>
+          </ListItem>
+          <Divider className="tw-my-[5px]" />
+          <ListItemButton
+            onClick={editTodoModalStatus.open}
+            className="tw-p-[15px_20px] tw-flex tw-gap-2 tw-items-center">
+            <span>수정</span>
+            <FaPenToSquare className="block tw-mt-[-5px]" />
+          </ListItemButton>
+          <ListItemButton
+            className="tw-p-[15px_20px] tw-flex tw-gap-2 tw-items-center"
+            onClick={removeTodo}>
+            <span>삭제</span>
+            <FaTrash className="block tw-mt-[-5px]" />
+          </ListItemButton>
+        </List>
+      </SwipeableDrawer>
+    </>
+  );
+}
+
+const TodoList = ({ noticeSnackbarStatus }) => {
+  const todosStatus = useTodosStatus();
+
   const todoOptionDrawerStatus = useTodoOptionDrawerStatus();
 
   return (
     <>
-      <Drawer
-        anchor="bottom"
-        open={todoOptionDrawerStatus.opened}
-        onClose={todoOptionDrawerStatus.close}>
-        <div className="tw-p-[30px] tw-flex tw-gap-x-[5px]">
-          {todoOptionDrawerStatus.todoId}번 todo에 대한 옵션 Drawer
-          <div>수정</div>
-          <div>삭제</div>
-        </div>
-      </Drawer>
-      <div className="tw-mb-2">할 일 갯수 : {todosState.todos.length}</div>
+      <TodoOptionDrawer
+        status={todoOptionDrawerStatus}
+        todosStatus={todosStatus}
+        noticeSnackbarStatus={noticeSnackbarStatus}
+      />
+
       <nav>
+        할 일 갯수 : {todosStatus.todos.length}
         <ul>
-          {todosState.todos.map((todo, index) => (
+          {todosStatus.todos.map((todo, index) => (
             <TodoListItem
               key={todo.id}
               todo={todo}
               index={index}
               openDrawer={todoOptionDrawerStatus.open}
+              todosStatus={todosStatus}
             />
           ))}
         </ul>
@@ -173,17 +352,67 @@ const TodoList = ({ todosState }) => {
   );
 };
 
+function NoticeSnackbar({ status }) {
+  return (
+    <>
+      <Snackbar
+        open={status.opened}
+        autoHideDuration={status.autoHideDuration}
+        onClose={status.close}>
+        <Alert variant={status.variant} severity={status.severity}>
+          {status.msg}
+        </Alert>
+      </Snackbar>
+    </>
+  );
+}
+function useNoticeSnackbarStatus() {
+  const [opened, setOpened] = React.useState(false);
+  const [autoHideDuration, setAutoHideDuration] = React.useState(null);
+  const [variant, setVariant] = React.useState(null);
+  const [severity, setSeverity] = React.useState(null);
+  const [msg, setMsg] = React.useState(null);
+  const open = (msg, severity = 'success', autoHideDuration = 3000, variant = 'filled') => {
+    setOpened(true);
+    setMsg(msg);
+    setSeverity(severity);
+    setAutoHideDuration(autoHideDuration);
+    setVariant(variant);
+  };
+  const close = () => {
+    setOpened(false);
+  };
+  return {
+    opened,
+    open,
+    close,
+    autoHideDuration,
+    variant,
+    severity,
+    msg,
+  };
+}
+
 function App() {
-  const todosState = useTodoStatus(); // 커스텀 훅
+  const todosStatus = useTodosStatus();
+
+  const [open, setOpen] = React.useState(false);
+
+  const noticeSnackbarStatus = useNoticeSnackbarStatus();
 
   React.useEffect(() => {
-    todosState.addTodo('스쿼트');
-    todosState.addTodo('벤치프레스');
-    todosState.addTodo('데드리프트\n런지');
+    todosStatus.addTodo('스쿼트');
+    todosStatus.addTodo('벤치프레스');
+    todosStatus.addTodo('데드리프트\n런지');
   }, []);
 
   return (
     <>
+      <Snackbar open={open} autoHideDuration={4000} onClose={() => setOpen(false)}>
+        <Alert variant="filled" severity="sucess">
+          게시물 삭제됨
+        </Alert>
+      </Snackbar>
       <AppBar position="fixed">
         <Toolbar>
           <div className="tw-flex-1">
@@ -198,8 +427,9 @@ function App() {
         </Toolbar>
       </AppBar>
       <Toolbar />
-      <NewTodoForm todosState={todosState} />
-      <TodoList todosState={todosState} />
+      <NoticeSnackbar status={noticeSnackbarStatus} />
+      <NewTodoForm noticeSnackbarStatus={noticeSnackbarStatus} />
+      <TodoList noticeSnackbarStatus={noticeSnackbarStatus} />
     </>
   );
 }
@@ -208,9 +438,11 @@ export default function themeApp() {
   const theme = RootTheme();
 
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <App />
-    </ThemeProvider>
+    <RecoilRoot>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <App />
+      </ThemeProvider>
+    </RecoilRoot>
   );
 }
